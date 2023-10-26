@@ -5,7 +5,7 @@ local rockspec_revision = "1"
 
 local github_account_name = "telekom-digioss"
 local github_repo_name = package_name
-local git_checkout = package_version == "dev" and "master" or package_version
+local git_checkout = package_version == "dev" and "master" or "v" .. package_version
 
 
 package = package_name
