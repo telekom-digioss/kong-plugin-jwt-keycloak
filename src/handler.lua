@@ -11,7 +11,7 @@ local validate_roles = require("kong.plugins.jwt-keycloak.validators.roles").val
 local validate_realm_roles = require("kong.plugins.jwt-keycloak.validators.roles").validate_realm_roles
 local validate_client_roles = require("kong.plugins.jwt-keycloak.validators.roles").validate_client_roles
 
-local re_gmatch = ngx.re.gmatch
+local re_sub = ngx.re.sub
 
 local priority_env_var = "JWT_KEYCLOAK_PRIORITY"
 local priority
@@ -182,11 +182,12 @@ local function retrieve_tokens(conf)
       if type(token) == "table" then
         for _, t in ipairs(token) do
           if t ~= "" then
+            kong.log.debug("retrieve token from uri param: " .. t)
             token_set[t] = true
           end
         end
-
       elseif token ~= "" then
+        kong.log.debug("retrieve token from uri param: " .. token)
         token_set[token] = true
       end
     end
@@ -196,6 +197,7 @@ local function retrieve_tokens(conf)
   for _, v in ipairs(conf.cookie_names) do
     local cookie = var["cookie_" .. v]
     if cookie and cookie ~= "" then
+      kong.log.debug("retrieve token from cookie: ".. cookie)
       token_set[cookie] = true
     end
   end
@@ -207,22 +209,11 @@ local function retrieve_tokens(conf)
       if type(token_header) == "table" then
         token_header = token_header[1]
       end
-      local iterator, iter_err = re_gmatch(token_header, "\\s*[Bb]earer\\s+(.+)")
-      if not iterator then
-        kong.log.err(iter_err)
-        break
-      end
-
-      local m, err = iterator()
-      if err then
-        kong.log.err(err)
-        break
-      end
-
-      if m and #m > 0 then
-        if m[1] ~= "" then
-          token_set[m[1]] = true
-        end
+      -- remove "bearer" prefix in header value if exists
+      local token_header, _, _ = re_sub(token_header, "\\s*[Bb]earer\\s+", "")
+      if token_header and token_header ~= "" then
+        kong.log.debug("retrieve token from header: " .. v)
+        token_set[token_header] = true
       end
     end
   end
@@ -253,25 +244,28 @@ local function set_consumer(consumer, credential, token)
   local clear_header = kong.service.request.clear_header
 
   if consumer and consumer.id then
+    kong.log.debug("set header consumer id: " .. consumer.custom_id)
     set_header(constants.HEADERS.CONSUMER_ID, consumer.id)
   else
     clear_header(constants.HEADERS.CONSUMER_ID)
   end
 
   if consumer and consumer.custom_id then
-    kong.log.debug("found consumer " .. consumer.custom_id)
+    kong.log.debug("set header consumer custom id: " .. consumer.custom_id)
     set_header(constants.HEADERS.CONSUMER_CUSTOM_ID, consumer.custom_id)
   else
     clear_header(constants.HEADERS.CONSUMER_CUSTOM_ID)
   end
 
   if consumer and consumer.username then
+    kong.log.debug("set header consumer username: " .. consumer.custom_id)
     set_header(constants.HEADERS.CONSUMER_USERNAME, consumer.username)
   else
     clear_header(constants.HEADERS.CONSUMER_USERNAME)
   end
 
   if credential and credential.key then
+    kong.log.debug("set header consumer identifier: " .. consumer.custom_id)
     set_header(constants.HEADERS.CREDENTIAL_IDENTIFIER, credential.key)
   else
     clear_header(constants.HEADERS.CREDENTIAL_IDENTIFIER)
@@ -280,6 +274,7 @@ local function set_consumer(consumer, credential, token)
   if credential then
     clear_header(constants.HEADERS.ANONYMOUS)
   else
+    kong.log.debug("set header anonymous: " .. consumer.custom_id)
     set_header(constants.HEADERS.ANONYMOUS, true)
   end
 
@@ -353,6 +348,7 @@ local function do_authentication(conf)
       return false, { status = 401, message = "Unrecognizable token" }
     end
   end
+  kong.log.debug("retrieved token: " .. token)
 
   -- Decode token to find out who the consumer is
   local jwt, err = jwt_decoder:new(token)
@@ -360,8 +356,6 @@ local function do_authentication(conf)
     return false, { status = 401, message = "Bad token; " .. tostring(err) }
   end
 
-  local claims = jwt.claims
-  local header = jwt.header
 
   -- Verify that the issuer is allowed
   if not validate_issuer(conf.allowed_iss, jwt.claims) then
