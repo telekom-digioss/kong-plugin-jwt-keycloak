@@ -1,6 +1,5 @@
 local constants = require "kong.constants"
 local jwt_decoder = require "kong.plugins.jwt.jwt_parser"
-local kong_meta = require "kong.meta"
 
 local socket = require "socket"
 local keycloak_keys = require("kong.plugins.jwt-keycloak.keycloak_keys")
@@ -23,7 +22,7 @@ end
 kong.log.debug('JWT_KEYCLOAK_PRIORITY: ' .. priority)
 
 local JwtKeycloakHandler = {
-  VERSION = kong_meta.version,
+  VERSION = "1.3.0",
   PRIORITY = priority,
 }
 
